@@ -33,6 +33,8 @@ export interface TraceResult {
   stdout: string;
 }
 
-export type Lang = 'python' | 'javascript';
+export type Lang = 'python' | 'javascript' | 'cpp' | 'java';
+
+export const LANG_LABEL: Record<Lang, string> = { python: 'Python', javascript: 'JavaScript', cpp: 'C++', java: 'Java' };
 
 export const MAX_STEPS = 2000;

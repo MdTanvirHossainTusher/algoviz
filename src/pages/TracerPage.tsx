@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import CodeMirror from '@uiw/react-codemirror';
 import { python } from '@codemirror/lang-python';
 import { javascript } from '@codemirror/lang-javascript';
+import { cpp } from '@codemirror/lang-cpp';
+import { java } from '@codemirror/lang-java';
 import type { Lang, TraceResult, TFrame, TStep } from '../tracer/types';
-import { MAX_STEPS } from '../tracer/types';
+import { MAX_STEPS, LANG_LABEL } from '../tracer/types';
 import { runTrace, warmPython, type Status } from '../tracer/run';
 import { examples, defaultExample } from '../tracer/examples';
 import { explain, indexPointers } from '../tracer/explain';
@@ -14,6 +16,41 @@ import { Timeline, PlayButtons, KeyHint } from '../components/PlayerControls';
 import { IconCode, IconNext, IconPlay, IconPrev } from '../components/Icons';
 
 const DRAFT_KEY = 'tracer-draft-v1';
+const LANGS: Lang[] = ['python', 'javascript', 'cpp', 'java'];
+const TIPS: Record<Lang, ReactNode> = {
+  python: (
+    <>
+      Tip: call your function at the bottom of the file, e.g. <code>print(solve([3, -1, 2]))</code>. Python runs on Pyodide, which downloads about 10 MB the first time.
+    </>
+  ),
+  javascript: (
+    <>
+      Tip: call your function at the bottom, e.g. <code>console.log(solve([3, -1, 2]))</code>.
+    </>
+  ),
+  cpp: (
+    <>
+      Tip: the program starts at <code>int main()</code>. C++ is interpreted in your browser (no compiler download), and undefined behavior such as an out-of-range index or a null dereference is reported instead of crashing.
+    </>
+  ),
+  java: (
+    <>
+      Tip: the program starts at <code>public static void main(String[] args)</code> in any class. Java is interpreted in your browser, and exceptions show where they were thrown.
+    </>
+  ),
+};
+const SUPPORTED: Record<Lang, string> = {
+  python: 'Supported: functions, recursion, classes, lists/dicts/sets, 2-D grids, input() and stdin. Async code and network or file access are not traced.',
+  javascript: 'Supported: functions, recursion, classes, arrays, Maps/Sets, 2-D grids and stdin. Async code and network or file access are not traced.',
+  cpp: 'Supported: functions, recursion, structs/classes, pointers to objects, references, lambdas, templates, vector/map/set/unordered_map/stack/queue/deque/priority_queue/pair, <algorithm>, string, cin/cout/printf/scanf. Not supported: pointer arithmetic on raw memory, multiple inheritance, stringstream.',
+  java: 'Supported: classes, inheritance, interfaces, enums, generics, lambdas and comparators, arrays, ArrayList/HashMap/TreeMap/HashSet/ArrayDeque/PriorityQueue, String/StringBuilder, Math, Scanner and BufferedReader. Not supported: streams, threads, reflection.',
+};
+const STDIN_HINT: Record<Lang, string> = {
+  python: 'Lines returned by input()',
+  javascript: "Text returned by require('fs').readFileSync(0) / input()",
+  cpp: 'Read by cin >> x, getline(cin, s) and scanf',
+  java: 'Read by Scanner(System.in) or BufferedReader.readLine()',
+};
 
 function loadDraft(): { lang: Lang; code: string; stdin: string } | null {
   try {
@@ -50,7 +87,7 @@ function FrameView({ f, prev, top, lang, showFns }: { f: TFrame; prev?: TFrame; 
   return (
     <div className={`frame ${top ? 'top' : ''}`}>
       <div className="frame-h">
-        <span>{f.name === 'global' ? 'Global frame' : `${f.name}()`}</span>
+        <span>{f.name === 'global' ? (lang === 'java' ? 'Static fields' : 'Global frame') : `${f.name}()`}</span>
         <span className="muted">line {f.line}</span>
       </div>
       <div className="frame-b">
@@ -157,8 +194,9 @@ export default function TracerPage() {
     setMode('edit');
   };
 
-  const extensions = useMemo(() => [lang === 'python' ? python() : javascript()], [lang]);
-  const busy = status !== 'idle';
+  const extensions = useMemo(() => [lang === 'python' ? python() : lang === 'cpp' ? cpp() : lang === 'java' ? java() : javascript()], [lang]);
+  // Pyodide downloading in the background must not block C++/Java/JS runs
+  const busy = status === 'running' || (status === 'loading-python' && lang === 'python');
   const errLine = result?.error?.line ?? undefined;
 
   return (
@@ -177,12 +215,11 @@ export default function TracerPage() {
         <div className="card">
           <div className="editor-head">
             <div className="seg" role="tablist" aria-label="Language">
-              <button className={lang === 'python' ? 'on' : ''} onClick={() => switchLang('python')}>
-                Python
-              </button>
-              <button className={lang === 'javascript' ? 'on' : ''} onClick={() => switchLang('javascript')}>
-                JavaScript
-              </button>
+              {LANGS.map((l) => (
+                <button key={l} className={lang === l ? 'on' : ''} onClick={() => switchLang(l)}>
+                  {LANG_LABEL[l]}
+                </button>
+              ))}
             </div>
             <select className="select" style={{ width: 'auto', maxWidth: 260 }} value="" onChange={(e) => pickExample(e.target.value)} aria-label="Load an example">
               <option value="">Load an example…</option>
@@ -201,7 +238,7 @@ export default function TracerPage() {
               </button>
             ) : (
               <button className="btn primary" onClick={run} disabled={busy || !code.trim()}>
-                {busy ? <span className="spinner" /> : <IconPlay />} {status === 'loading-python' ? 'Loading Python…' : status === 'running' ? 'Running…' : 'Run & trace'}
+                {busy ? <span className="spinner" /> : <IconPlay />} {busy && status === 'loading-python' ? 'Loading Python…' : status === 'running' ? 'Running…' : 'Run & trace'}
               </button>
             )}
           </div>
@@ -216,7 +253,7 @@ export default function TracerPage() {
                   {showStdin ? '▾' : '▸'} Standard input {stdin ? `(${stdin.split('\n').length} lines)` : ''}
                 </button>
                 {showStdin && (
-                  <textarea className="textarea" rows={3} value={stdin} onChange={(e) => setStdin(e.target.value)} placeholder={lang === 'python' ? 'Lines returned by input()' : "Text returned by require('fs').readFileSync(0) / input()"} spellCheck={false} style={{ marginTop: 6 }} />
+                  <textarea className="textarea" rows={3} value={stdin} onChange={(e) => setStdin(e.target.value)} placeholder={STDIN_HINT[lang]} spellCheck={false} style={{ marginTop: 6 }} />
                 )}
               </div>
             </>
@@ -250,7 +287,7 @@ export default function TracerPage() {
           )}
           {mode === 'edit' && !result && (
             <div className="tip" style={{ marginTop: 10 }}>
-              Tip: call your function at the bottom of the file, e.g. <code>print(solve([3, -1, 2]))</code>. Edge-case calls (empty input, negatives, missing values) are great to trace. Python runs on Pyodide, which downloads about 10 MB the first time.
+              {TIPS[lang]} Edge-case calls (empty input, negatives, missing values) are great to trace.
             </div>
           )}
         </div>
@@ -348,7 +385,7 @@ export default function TracerPage() {
           <div className="card">
             <span className="eyebrow">How it works</span>
             <ol className="changes" style={{ marginTop: 8, lineHeight: 1.7 }}>
-              <li>Write or paste a program in Python or JavaScript, or load an example.</li>
+              <li>Write or paste a program in Python, JavaScript, C++ or Java, or load an example.</li>
               <li>
                 Press <b>Run & trace</b>. Every executed line, function call and return value is recorded (up to {MAX_STEPS} steps).
               </li>
@@ -358,7 +395,7 @@ export default function TracerPage() {
               <li>Recursion shows one frame per call, so you can watch the call stack grow and unwind.</li>
             </ol>
             <div className="tip" style={{ marginTop: 10 }}>
-              Supported: functions, recursion, classes, lists/dicts/sets, Maps, 2-D grids, <code>input()</code> and stdin. Limits: 2000 steps and a few seconds of run time. Async code and network or file access are not traced.
+              {SUPPORTED[tracedLang === lang || !result ? lang : tracedLang]} Limits: {MAX_STEPS} steps and a few seconds of run time.
             </div>
             {result && !result.steps.length && !result.error && <div className="preset-note" style={{ marginTop: 10 }}>The program ran but executed no traceable lines.</div>}
             {result && result.stdout && !result.steps.length && (

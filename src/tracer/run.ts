@@ -40,8 +40,8 @@ export function warmPython(onStatus: (s: Status) => void) {
     .catch(() => onStatus('idle'));
 }
 
-const SOFT_TIMEOUT_S = { python: 10, javascript: 5 };
-const HARD_TIMEOUT_MS = { python: 20000, javascript: 9000 };
+const SOFT_TIMEOUT_S = { python: 10, javascript: 5, cpp: 5, java: 5 };
+const HARD_TIMEOUT_MS = { python: 20000, javascript: 9000, cpp: 9000, java: 9000 };
 
 export async function runTrace(lang: Lang, code: string, stdin: string, onStatus: (s: Status) => void): Promise<TraceResult> {
   if (lang === 'python') {
@@ -66,6 +66,21 @@ export async function runTrace(lang: Lang, code: string, stdin: string, onStatus
   }
 
   onStatus('running');
+  if (lang === 'cpp' || lang === 'java') {
+    return new Promise<TraceResult>((resolve) => {
+      const w = new Worker(new URL('./clikeWorker.ts', import.meta.url), { type: 'module' });
+      const done = (r: TraceResult) => {
+        clearTimeout(timer);
+        w.terminate();
+        onStatus('idle');
+        resolve(r);
+      };
+      const timer = setTimeout(() => done({ steps: [], stdout: '', error: { msg: 'Execution did not finish in time and was stopped.' } }), HARD_TIMEOUT_MS[lang]);
+      w.onmessage = (e: MessageEvent<TraceResult>) => done(e.data);
+      w.onerror = (e) => done({ steps: [], stdout: '', error: { msg: e.message || 'The tracer worker crashed.' } });
+      w.postMessage({ code, stdin, lang, maxSteps: MAX_STEPS, timeoutMs: SOFT_TIMEOUT_S[lang] * 1000 });
+    });
+  }
   return new Promise<TraceResult>((resolve) => {
     const w = new Worker(new URL('./jsWorker.ts', import.meta.url), { type: 'module' });
     const done = (r: TraceResult) => {

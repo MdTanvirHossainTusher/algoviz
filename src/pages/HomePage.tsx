@@ -18,7 +18,7 @@ export function HomePage() {
           </h1>
           <p>
             {allAlgorithms.length} interactive visualizations across sorting, searching, graphs, dynamic programming, greedy, backtracking, trees and classic techniques — each with
-            pseudocode, live counters and one-click edge cases (empty input, negatives, duplicates, impossible targets…). Or paste your own Python / JavaScript and step through it line by
+            pseudocode, live counters and one-click edge cases (empty input, negatives, duplicates, impossible targets…). Or paste your own Python, JavaScript, C++ or Java and step through it line by
             line.
           </p>
           <div className="hero-actions">
