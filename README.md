@@ -1,6 +1,6 @@
 # AlgoTrace
 
-Interactive, step-by-step algorithm visualizer plus a line-by-line code tracer for your own Python or JavaScript.
+Interactive, step-by-step algorithm visualizer plus a line-by-line code tracer for your own Python, JavaScript, C++ or Java.
 
 ## Features
 
@@ -11,6 +11,11 @@ Interactive, step-by-step algorithm visualizer plus a line-by-line code tracer f
 - **Code Tracer** (`/tracer`): paste code, press Run, step through every line with call frames, variables, array index pointers, diffs ("`seen[4] = 0` (new key)") and stdout. Supports `input()`/stdin.
   - Python runs in [Pyodide](https://pyodide.org) inside a Web Worker using `sys.settrace`.
   - JavaScript is instrumented with [acorn](https://github.com/acornjs/acorn) and run in a Web Worker.
+  - C++ and Java run on a built-in interpreter (`src/tracer/clike/`) in a Web Worker, so nothing needs to be downloaded or compiled. It models the parts of each language that algorithm code uses:
+    - C++: `int`/`long long`/`double`/`char` semantics, structs and classes, pointers to objects, references, lambdas, templates and macros, the STL containers, `<algorithm>`, `cin`/`cout`/`printf`/`scanf`.
+    - Java: classes, inheritance, interfaces, enums, generics, comparators, `java.util` collections (`HashMap` prints in real Java order), `String`/`StringBuilder`, `Scanner`/`BufferedReader`.
+    - Undefined behavior (out-of-range index, null dereference, division by zero) is reported at the failing line. Java exceptions are thrown and can be caught as usual.
+    - Not modelled: raw pointer arithmetic, `stringstream`, multiple inheritance, Java streams and threads.
   - Code never leaves the browser. Runs stop at 2000 steps or a few seconds, so infinite loops can't freeze the page.
 - Complexity cheatsheet, search (`Ctrl K`), light and dark themes.
 
@@ -58,6 +63,7 @@ src/algorithms/   one file per category; each algorithm records Step[] snapshots
 src/components/   top bar, sidebar, player controls, visualizers (bars, cells, tables, graphs, lists)
 src/pages/        home, algorithm page, cheatsheet, tracer
 src/tracer/       JS instrumenter + worker, Pyodide runner, diff/explanations, value renderer, examples
+src/tracer/clike/ C++/Java lexer, parser, interpreter and standard library
 public/py-worker.js   Python tracer worker (Pyodide + sys.settrace)
 ```
 
